@@ -1,0 +1,402 @@
+{
+  "name": "小红书创作者分析Agent",
+  "nodes": [
+    {
+      "id": "webhook-1",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [250, 300],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "xiaohongshu-analysis",
+        "responseMode": "onReceived",
+        "responseData": "firstEntryJson",
+        "options": {}
+      },
+      "webhookId": "={{ $parameter.path }}"
+    },
+    {
+      "id": "parse-input-1",
+      "name": "Parse Input Data",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [450, 300],
+      "parameters": {
+        "functionCode": "// Webhook数据可能在body字段中，需要解析JSON\nconst webhookData = items[0].json;\nlet inputData;\n\n// 尝试从body字段解析JSON\nif (webhookData.body) {\n  try {\n    if (typeof webhookData.body === 'string') {\n      inputData = JSON.parse(webhookData.body);\n    } else {\n      inputData = webhookData.body;\n    }\n  } catch (error) {\n    // 如果解析失败，使用原始数据\n    inputData = webhookData.body;\n  }\n} else {\n  // 如果没有body字段，使用整个webhook数据\n  inputData = webhookData;\n}\n\n// 确保必要字段存在\nconst requiredFields = ['userName', 'userId', 'subscribers', 'followers', 'likes', 'allTitles', 'top10Notes'];\nfor (const field of requiredFields) {\n  if (!inputData[field]) {\n    inputData[field] = '';\n  }\n}\n\nreturn [\n  {\n    json: {\n      ...inputData,\n      _originalData: inputData\n    }\n  }\n];"
+      }
+    },
+    {
+      "id": "ai-agent-1",
+      "name": "AI Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [650, 300],
+      "parameters": {
+        "promptType": "define",
+        "text": "请分析以下小红书创作者数据，生成详细的分析报告，并返回JSON格式的结果。\n\n用户数据：\n用户名：{{ $json.userName }}\n小红书ID：{{ $json.userId }}\n关注数：{{ $json.subscribers }}\n粉丝数：{{ $json.followers }}\n获赞+收藏数：{{ $json.likes }}\n\n所有笔记标题：{{ $json.allTitles }}\n\nTop10笔记数据：{{ $json.top10Notes }}\n\n请按照以下要求生成专业分析报告：\n1. 数据概览：总结用户的基本数据指标和整体表现\n2. 赛道分析：分析用户所在的内容领域、垂直赛道和竞争位置\n3. 标题风格分析：分析用户标题的特点、风格、吸引力和关键词使用\n4. 笔记风格分析：分析笔记内容的风格、表达方式、内容特点和互动策略\n5. 热门笔记分析：分析top10笔记的表现、互动数据、内容特点和成功因素\n\n请返回严格的JSON格式，包含以下字段：\n- report: 完整的分析报告文本（中文）\n- authorData: 作者数据对象\n- notesData: 笔记数据数组\n\n注意：authorData必须包含以下字段（使用英文字段名）：\n- user_name: 用户名\n- user_xhs_id: 小红书ID\n- subscribers: 关注数（转换为整数）\n- followers: 粉丝数（转换为整数）\n- likes: 获赞+收藏数（转换为整数）\n- profile_url: null\n- other_notes: 数组，包含allTitles中不在top10Notes中的标题\n\nnotesData必须是数组，每个元素包含：\n- title: 笔记标题\n- description: 笔记描述\n- likes: 点赞数（转换为整数）\n- collects: 收藏数（转换为整数）\n- is_top10: true\n- raw_json: 原始笔记数据对象",
+        "hasOutputParser": false,
+        "needsFallback": false,
+        "options": {
+          "systemMessage": "你是一个专业的小红书创作者数据分析专家。你的任务是分析小红书创作者的数据，生成专业的分析报告，并提取结构化数据用于数据库存储。\n\n请严格按照以下步骤执行：\n1. 仔细分析提供的创作者数据\n2. 生成包含以下五个部分的专业分析报告（使用中文）：\n   - 数据概览：总结用户的基本数据指标和整体表现\n   - 赛道分析：分析用户所在的内容领域、垂直赛道和竞争位置\n   - 标题风格分析：分析用户标题的特点、风格、吸引力和关键词使用\n   - 笔记风格分析：分析笔记内容的风格、表达方式、内容特点和互动策略\n   - 热门笔记分析：分析top10笔记的表现、互动数据、内容特点和成功因素\n3. 提取并返回结构化数据：\n   - authorData: 作者信息对象，包含所有必要字段（使用英文字段名）\n   - notesData: 笔记信息数组\n   - report: 完整的分析报告文本\n\n重要要求：\n- 确保所有数字字段都转换为整数类型\n- other_notes字段应该包含allTitles中不在top10Notes中的标题\n- 返回严格的JSON格式，确保可以直接解析",
+          "maxIterations": 10,
+          "returnIntermediateSteps": false,
+          "passthroughBinaryImages": true
+        }
+      }
+    },
+    {
+      "id": "openrouter-1",
+      "name": "OpenRouter Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [850, 200],
+      "parameters": {
+        "model": "deepseek/deepseek-chat",
+        "options": {
+          "responseFormat": "json_object",
+          "temperature": 0.3,
+          "maxTokens": 4000,
+          "topP": 0.9
+        }
+      },
+      "credentials": {
+        "openRouterApi": {
+          "id": "1",
+          "name": "OpenRouter API"
+        }
+      }
+    },
+    {
+      "id": "process-ai-output-1",
+      "name": "Process AI Output",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1050, 300],
+      "parameters": {
+        "functionCode": "// 从AI Agent的输出中提取数据\nconst aiOutput = items[0].json;\n\n// 解析JSON输出\nlet parsedData;\ntry {\n  if (typeof aiOutput === 'string') {\n    parsedData = JSON.parse(aiOutput);\n  } else {\n    parsedData = aiOutput;\n  }\n} catch (error) {\n  // 如果解析失败，尝试从可能的字段中提取\n  parsedData = aiOutput;\n}\n\n// 确保数据格式正确\nconst authorData = parsedData.authorData || {};\nconst notesData = parsedData.notesData || [];\nconst report = parsedData.report || '';\n\n// 获取原始输入数据以计算other_notes\nconst originalData = $('parse-input-1').item.json._originalData || {};\nconst allTitles = originalData.allTitles || [];\nconst top10Titles = notesData.map(note => note.title);\nconst otherNotes = allTitles.filter(title => !top10Titles.includes(title));\n\n// 确保数字字段是整数\nconst cleanAuthorData = {\n  user_name: String(authorData.user_name || originalData.userName || ''),\n  user_xhs_id: String(authorData.user_xhs_id || originalData.userId || ''),\n  subscribers: parseInt(authorData.subscribers || originalData.subscribers || 0),\n  followers: parseInt(authorData.followers || originalData.followers || 0),\n  likes: parseInt(authorData.likes || originalData.likes || 0),\n  profile_url: null,\n  other_notes: otherNotes,\n  report: report\n};\n\n// 清理笔记数据\nconst cleanNotesData = notesData.map((note, index) => ({\n  title: String(note.title || ''),\n  description: String(note.description || ''),\n  likes: parseInt(note.likes || 0),\n  collects: parseInt(note.collects || 0),\n  is_top10: true,\n  raw_json: note.raw_json || note || {}\n}));\n\nreturn [\n  {\n    json: {\n      authorData: cleanAuthorData,\n      notesData: cleanNotesData,\n      originalUserId: originalData.userId || ''\n    }\n  }\n];"
+      }
+    },
+    {
+      "id": "insert-author-1",
+      "name": "Insert Author",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [1450, 200],
+      "parameters": {
+        "operation": "insert",
+        "table": {
+          "__rl": true,
+          "value": "authors",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "user_name": {
+              "__rl": true,
+              "value": "={{ $json.authorData.user_name }}",
+              "mode": "expression"
+            },
+            "user_xhs_id": {
+              "__rl": true,
+              "value": "={{ $json.authorData.user_xhs_id }}",
+              "mode": "expression"
+            },
+            "subscribers": {
+              "__rl": true,
+              "value": "={{ $json.authorData.subscribers }}",
+              "mode": "expression"
+            },
+            "followers": {
+              "__rl": true,
+              "value": "={{ $json.authorData.followers }}",
+              "mode": "expression"
+            },
+            "likes": {
+              "__rl": true,
+              "value": "={{ $json.authorData.likes }}",
+              "mode": "expression"
+            },
+            "profile_url": {
+              "__rl": true,
+              "value": "={{ $json.authorData.profile_url }}",
+              "mode": "expression"
+            },
+            "other_notes": {
+              "__rl": true,
+              "value": "={{ $json.authorData.other_notes }}",
+              "mode": "expression"
+            },
+            "report": {
+              "__rl": true,
+              "value": "={{ $json.authorData.report }}",
+              "mode": "expression"
+            }
+          }
+        },
+        "options": {
+          "skipOnConflict": true
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "1",
+          "name": "Postgres"
+        }
+      }
+    },
+    {
+      "id": "get-author-id-1",
+      "name": "Get Author ID",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [1450, 400],
+      "parameters": {
+        "operation": "select",
+        "table": {
+          "__rl": true,
+          "value": "authors",
+          "mode": "name"
+        },
+        "where": {
+          "conditions": [
+            {
+              "column": "user_xhs_id",
+              "condition": "=",
+              "value": "={{ $('process-ai-output-1').item.json.authorData.user_xhs_id }}"
+            }
+          ],
+          "combineConditions": "AND"
+        },
+        "options": {
+          "maxRows": 1
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "1",
+          "name": "Postgres"
+        }
+      }
+    },
+    {
+      "id": "prepare-notes-1",
+      "name": "Prepare Notes Data",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1850, 300],
+      "parameters": {
+        "functionCode": "// 获取作者ID\nconst authorResult = $('get-author-id-1').item;\nconst authorId = authorResult && authorResult.json && authorResult.json.id ? authorResult.json.id : null;\n\nif (!authorId) {\n  throw new Error('未能获取作者ID，无法插入笔记数据');\n}\n\n// 获取笔记数据\nconst notesData = $('process-ai-output-1').item.json.notesData || [];\n\n// 为每条笔记添加author_id\nconst notesWithAuthorId = notesData.map(note => ({\n  ...note,\n  author_id: authorId\n}));\n\n// 返回笔记数据数组\nreturn notesWithAuthorId.map(note => ({\n  json: note\n}));"
+      }
+    },
+    {
+      "id": "insert-notes-1",
+      "name": "Insert Notes",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [2250, 300],
+      "parameters": {
+        "operation": "insert",
+        "table": {
+          "__rl": true,
+          "value": "notes",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "author_id": {
+              "__rl": true,
+              "value": "={{ $json.author_id }}",
+              "mode": "expression"
+            },
+            "title": {
+              "__rl": true,
+              "value": "={{ $json.title }}",
+              "mode": "expression"
+            },
+            "description": {
+              "__rl": true,
+              "value": "={{ $json.description }}",
+              "mode": "expression"
+            },
+            "likes": {
+              "__rl": true,
+              "value": "={{ $json.likes }}",
+              "mode": "expression"
+            },
+            "collects": {
+              "__rl": true,
+              "value": "={{ $json.collects }}",
+              "mode": "expression"
+            },
+            "is_top10": {
+              "__rl": true,
+              "value": "={{ $json.is_top10 }}",
+              "mode": "expression"
+            },
+            "raw_json": {
+              "__rl": true,
+              "value": "={{ $json.raw_json }}",
+              "mode": "expression"
+            }
+          }
+        },
+        "options": {
+          "skipOnConflict": true
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "1",
+          "name": "Postgres"
+        }
+      }
+    },
+    {
+      "id": "prepare-response-1",
+      "name": "Prepare Response",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [2650, 300],
+      "parameters": {
+        "functionCode": "// 检查数据库操作是否成功\nconst authorInsertResult = $('insert-author-1').item;\nconst notesInsertResult = $('insert-notes-1').allItems;\n\nconst authorSuccess = !!authorInsertResult;\nconst notesSuccess = notesInsertResult && notesInsertResult.length > 0;\nconst notesCount = notesSuccess ? notesInsertResult.length : 0;\n\nconst success = authorSuccess && notesSuccess;\n\nreturn [\n  {\n    json: {\n      success: success,\n      message: success ? \"数据保存成功\" : \"数据保存失败\",\n      authorInserted: authorSuccess,\n      notesInserted: notesCount,\n      authorId: authorInsertResult ? authorInsertResult.json.id : null\n    }\n  }\n];"
+      }
+    },
+    {
+      "id": "respond-webhook-1",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [3050, 300],
+      "parameters": {}
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Parse Input Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Input Data": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Process AI Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "ai_languageModel": [
+        [
+          {
+            "node": "OpenRouter Chat Model",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter Chat Model": {
+      "main": []
+    },
+    "Process AI Output": {
+      "main": [
+        [
+          {
+            "node": "Insert Author",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Author ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Author": {
+      "main": [
+        [
+          {
+            "node": "Get Author ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Author ID": {
+      "main": [
+        [
+          {
+            "node": "Prepare Notes Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Notes Data": {
+      "main": [
+        [
+          {
+            "node": "Insert Notes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Notes": {
+      "main": [
+        [
+          {
+            "node": "Prepare Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond to Webhook": {
+      "main": []
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "triggerCount": 1
+}

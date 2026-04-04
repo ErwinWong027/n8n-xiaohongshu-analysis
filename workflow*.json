@@ -1,0 +1,293 @@
+{
+  "name": "小红书创作者分析工作流",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "xiaohongshu-analysis",
+        "responseMode": "lastNode",
+        "responseData": "firstEntryJson"
+      },
+      "id": "webhook-trigger",
+      "name": "接收小红书数据",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        280,
+        300
+      ],
+      "webhookId": "xhs-creator-analysis"
+    },
+    {
+      "parameters": {
+        "promptType": "expression",
+        "text": "你是一个专业的社交媒体数据分析师，专门分析小红书创作者的内容和表现。请根据以下创作者数据进行深度分析，生成一份专业的分析报告。\n\n# 创作者数据\n用户名：{{ $json.userName }}\n小红书号：{{ $json.userId }}\n订阅数：{{ $json.subscribers }}\n粉丝数：{{ $json.followers }}\n获赞数：{{ $json.likes }}\n档案地址：{{ $json.profileUrl }}\n\n# 所有标题列表\n{{ $json.allTitles.join('\\n') }}\n\n# 前10篇热门笔记详情\n{% for note in $json.top10Notes %}\n标题：{{ note.title }}\n描述：{{ note.desc }}\n点赞：{{ note.like }}\n收藏：{{ note.collect }}\n---\n{% endfor %}\n\n# 分析要求\n请从以下5个维度进行专业分析，生成一份完整的创作者分析报告：\n\n## 1. 数据概览\n- 分析创作者的基础数据表现（粉丝数、获赞数、互动率等）\n- 评估账号的影响力水平\n- 对比行业平均水平（如果可以推断的话）\n\n## 2. 赛道分析\n- 根据笔记内容识别创作者的主要内容赛道\n- 分析内容分布和专业领域\n- 评估赛道选择的合理性和发展潜力\n\n## 3. 标题风格分析\n- 分析标题的语言风格和表达方式\n- 识别常用的标题模板和套路\n- 评估标题的吸引力和SEO友好度\n\n## 4. 笔记风格分析\n- 分析笔记描述的写作风格\n- 识别常用话题标签和关键词\n- 评估内容的专业度和可读性\n\n## 5. 热门笔记分析\n- 分析前10篇笔记的表现数据\n- 识别爆款内容的共同特征\n- 提供内容优化建议\n\n# 输出格式要求\n请以专业的分析报告格式输出，使用markdown语法，包含清晰的章节结构和数据支撑。报告应该客观、专业、有深度，能够为创作者提供有价值的洞察和建议。\n\n现在请开始分析并生成报告。",
+        "options": {
+          "systemMessage": "你是一个专业的小红书数据分析师，擅长分析创作者的内容策略、受众特征和商业价值。请确保分析结果专业、客观、有深度。"
+        }
+      },
+      "id": "ai-agent-analysis",
+      "name": "AI创作者分析",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        500,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "model": "deepseek/deepseek-chat"
+      },
+      "id": "openrouter-chat-model",
+      "name": "OpenRouter DeepSeek模型",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        500,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// 解析AI分析结果并准备数据库插入数据\nconst webhookData = $('接收小红书数据').first().json;\nconst aiAnalysisResult = $('AI创作者分析').first().json;\n\n// 从 webhook body 中获取数据\nconst bodyData = webhookData.body || webhookData;\n\n// 准备作者数据\nconst authorData = {\n user_name: bodyData.userName || '',\n user_xhs_id: bodyData.userId || '',\n subscribers: parseInt(bodyData.subscribers) || 0,\n followers: parseInt(bodyData.followers) || 0,\n likes: parseInt(bodyData.likes) || 0,\n profile_url: bodyData.profileUrl || '',\n report: aiAnalysisResult.output || aiAnalysisResult.text || JSON.stringify(aiAnalysisResult)\n};\n\n// 计算other_notes（allTitles中除了top10Notes标题外的其他标题）\nconst top10Titles = bodyData.top10Notes ? bodyData.top10Notes.map(note => note.title) : [];\nconst otherTitles = bodyData.allTitles ? bodyData.allTitles.filter(title => !top10Titles.includes(title)) : [];\nauthorData.other_notes = otherTitles;\n\n// 准备笔记数据\nconst notesData = [];\nif (bodyData.top10Notes && Array.isArray(bodyData.top10Notes)) {\n bodyData.top10Notes.forEach(note => {\n const noteData = {\n title: note.title,\n description: note.desc || '',\n likes: parseInt(note.like) || 0,\n collects: parseInt(note.collect) || 0,\n is_top10: true,\n raw_json: note\n };\n notesData.push(noteData);\n });\n}\n\nreturn [\n {\n json: {\n authorData: authorData,\n notesData: notesData,\n originalData: bodyData,\n analysisResult: aiAnalysisResult\n }\n }\n];"
+      },
+      "id": "data-processor",
+      "name": "数据处理器",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "create",
+        "tableId": "authors",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "user_name",
+              "fieldValue": "={{ $json.authorData.user_name }}"
+            },
+            {
+              "fieldId": "user_xhs_id",
+              "fieldValue": "={{ $json.authorData.user_xhs_id }}"
+            },
+            {
+              "fieldId": "subscribers",
+              "fieldValue": "={{ $json.authorData.subscribers }}"
+            },
+            {
+              "fieldId": "followers",
+              "fieldValue": "={{ $json.authorData.followers }}"
+            },
+            {
+              "fieldId": "likes",
+              "fieldValue": "={{ $json.authorData.likes }}"
+            },
+            {
+              "fieldId": "profile_url",
+              "fieldValue": "={{ $json.authorData.profile_url }}"
+            },
+            {
+              "fieldId": "other_notes",
+              "fieldValue": "={{ JSON.stringify($json.authorData.other_notes) }}"
+            },
+            {
+              "fieldId": "report",
+              "fieldValue": "={{ $json.authorData.report }}"
+            }
+          ]
+        },
+        "options": {
+          "returning": "representation"
+        }
+      },
+      "id": "supabase-insert-author",
+      "name": "保存作者数据",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        940,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "batchSize": 5,
+        "jsCode": "// 为每个笔记数据添加author_id\nconst authorId = $('保存作者数据').first().json.id;\nconst notesData = $('数据处理器').first().json.notesData;\n\n// 为每个笔记添加author_id\nconst processedNotes = notesData.map(note => ({\n ...note,\n author_id: authorId\n}));\n\nreturn processedNotes.map(note => ({ json: note }));"
+      },
+      "id": "notes-processor",
+      "name": "笔记数据处理器",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        940,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "create",
+        "tableId": "notes",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "author_id",
+              "fieldValue": "={{ $json.author_id }}"
+            },
+            {
+              "fieldId": "title",
+              "fieldValue": "={{ $json.title }}"
+            },
+            {
+              "fieldId": "description",
+              "fieldValue": "={{ $json.description }}"
+            },
+            {
+              "fieldId": "likes",
+              "fieldValue": "={{ $json.likes }}"
+            },
+            {
+              "fieldId": "collects",
+              "fieldValue": "={{ $json.collects }}"
+            },
+            {
+              "fieldId": "is_top10",
+              "fieldValue": "={{ $json.is_top10 }}"
+            },
+            {
+              "fieldId": "raw_json",
+              "fieldValue": "={{ JSON.stringify($json.raw_json) }}"
+            }
+          ]
+        }
+      },
+      "id": "supabase-insert-notes",
+      "name": "保存笔记数据",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1160,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// 检查所有数据是否保存成功并返回结果\nconst authorResult = $('保存作者数据').first();\nconst notesResults = $('保存笔记数据').all();\n\nlet success = true;\nlet message = '数据保存成功';\nlet details = {\n authorSaved: false,\n notesSaved: 0,\n totalNotes: 0\n};\n\ntry {\n // 检查作者数据是否保存成功\n if (authorResult && authorResult.json && authorResult.json.id) {\n details.authorSaved = true;\n } else {\n success = false;\n message = '作者数据保存失败';\n }\n \n // 检查笔记数据是否保存成功\n details.totalNotes = notesResults.length;\n details.notesSaved = notesResults.filter(result => result.json && result.json.id).length;\n \n if (details.notesSaved !== details.totalNotes) {\n success = false;\n message = `部分笔记数据保存失败，成功保存 ${details.notesSaved}/${details.totalNotes}`;\n }\n \n} catch (error) {\n success = false;\n message = '数据处理过程中发生错误: ' + error.message;\n}\n\nreturn [{\n json: {\n success: success,\n message: message,\n details: details,\n authorId: authorResult?.json?.id || null,\n timestamp: new Date().toISOString()\n }\n}];"
+      },
+      "id": "result-processor",
+      "name": "结果处理器",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1380,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "接收小红书数据": {
+      "main": [
+        [
+          {
+            "node": "AI创作者分析",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI创作者分析": {
+      "main": [
+        [
+          {
+            "node": "数据处理器",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter DeepSeek模型": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI创作者分析",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "数据处理器": {
+      "main": [
+        [
+          {
+            "node": "保存作者数据",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "保存作者数据": {
+      "main": [
+        [
+          {
+            "node": "笔记数据处理器",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "结果处理器",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "笔记数据处理器": {
+      "main": [
+        [
+          {
+            "node": "保存笔记数据",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "保存笔记数据": {
+      "main": [
+        [
+          {
+            "node": "结果处理器",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "createdAt": "2025-08-05T03:00:00.000Z",
+      "updatedAt": "2025-08-05T03:00:00.000Z",
+      "id": "xiaohongshu-analysis",
+      "name": "小红书分析"
+    }
+  ],
+  "triggerCount": 1,
+  "updatedAt": "2025-08-05T03:00:00.000Z",
+  "versionId": "1"
+}
