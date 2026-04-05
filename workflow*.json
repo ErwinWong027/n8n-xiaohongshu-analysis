@@ -242,11 +242,6 @@
             "node": "笔记数据处理器",
             "type": "main",
             "index": 0
-          },
-          {
-            "node": "结果处理器",
-            "type": "main",
-            "index": 0
           }
         ]
       ]
