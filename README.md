@@ -8,6 +8,7 @@
 - 🤖 AI 智能分析（DeepSeek 模型）
 - 📝 生成 5 维度分析报告
 - 💾 自动存储到 Supabase 数据库
+- web-main是功能网站，需要设置环境变量POSTGRES_URL（需要密码）和ZAI_API_KEY（智谱模型）
 
 ## 工作流结构
 
