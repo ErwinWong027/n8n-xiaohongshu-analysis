@@ -11,7 +11,7 @@ import { Author } from '@/lib/drizzle'
 
 interface AIRewriteDialogProps {
   author?: Author
-  children: React.ReactNode
+  children?: React.ReactNode
 }
 
 export function AIRewriteDialog({ author, children }: AIRewriteDialogProps) {
@@ -98,7 +98,13 @@ export function AIRewriteDialog({ author, children }: AIRewriteDialogProps) {
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
-        {children}
+        <Button
+          size="lg"
+          className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white shadow-lg hover:shadow-xl transition-all duration-300"
+        >
+          <Sparkles className="w-5 h-5 mr-2" />
+          基于该作者仿写
+        </Button>
       </DialogTrigger>
       <DialogContent className="max-w-[95vw] w-full h-[90vh] p-0 flex flex-col">
         <VisuallyHidden>

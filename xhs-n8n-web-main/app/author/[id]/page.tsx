@@ -60,15 +60,7 @@ async function AuthorDetail({ id }: { id: number }) {
             </div>
           </div>
 
-          <AIRewriteDialog author={author[0]}>
-            <Button
-              size="lg"
-              className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white shadow-lg hover:shadow-xl transition-all duration-300"
-            >
-              <Sparkles className="w-5 h-5 mr-2" />
-              基于该作者仿写
-            </Button>
-          </AIRewriteDialog>
+          <AIRewriteDialog author={author[0]} />
         </div>
 
         {/* Stats */}
