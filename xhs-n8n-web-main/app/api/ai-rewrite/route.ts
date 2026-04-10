@@ -56,9 +56,8 @@ export async function POST(request: NextRequest) {
 1. 标题要吸引眼球，可以使用数字、问号、感叹号等元素
 2. 内容要有条理，使用序号或符号分点叙述
 3. 语言要亲切自然，符合小红书用户的表达习惯
-4. 适当使用网络热词和流行表达
-5. ${addEmojis ? '在内容中适当添加相关的emoji表情符号' : '不要使用emoji表情符号'}
-6. 结尾要有引导互动的内容，如"你们觉得呢？"、"快来分享你的经验吧！"等
+4. ${addEmojis ? '在内容中适当添加相关的emoji表情符号' : '不要使用emoji表情符号'}
+5. 结尾要有引导互动的内容，如"你们觉得呢？"、"快来分享你的经验吧！"等
 
 ${authorInfo ? `\n${authorInfo}\n` : ''}
 
@@ -83,7 +82,7 @@ ${content}`
         { role: 'user', content: userPrompt }
       ],
       stream: true,
-      temperature: 0.8,
+      temperature: 0.5,
       max_tokens: 2000,
     })
 
