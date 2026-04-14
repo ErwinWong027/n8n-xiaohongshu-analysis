@@ -35,9 +35,17 @@ export function AuthModal({ open, onClose }: Props) {
 
     try {
       if (tab === 'register') {
-        const { error } = await supabase.auth.signUp({ email, password })
-        if (error) throw error
-        // After sign up, also sign in immediately
+        // 用服务端接口注册，自动跳过邮箱验证
+        const res = await fetch('/api/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password }),
+        })
+        if (!res.ok) {
+          const data = await res.json()
+          throw new Error(data.error ?? '注册失败')
+        }
+        // 注册成功后直接登录
         const { error: loginError } = await supabase.auth.signInWithPassword({ email, password })
         if (loginError) throw loginError
       } else {
