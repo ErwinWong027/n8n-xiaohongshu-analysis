@@ -2,6 +2,8 @@ import { NextRequest } from 'next/server'
 import { OpenAI } from 'openai'
 import { db, authorsTable, notesTable } from '@/lib/drizzle'
 import { eq } from 'drizzle-orm'
+import { createClient } from '@/lib/supabase/server'
+import { checkAndIncrementUsage } from '@/lib/usage'
 
 const openai = new OpenAI({
   apiKey: process.env.ZAI_API_KEY!,
@@ -10,6 +12,25 @@ const openai = new OpenAI({
 
 export async function POST(request: NextRequest) {
   try {
+    // Auth check
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      return new Response(JSON.stringify({ error: 'unauthenticated' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+
+    // Usage limit check + increment
+    const usage = await checkAndIncrementUsage(user.id)
+    if (!usage.allowed) {
+      return new Response(
+        JSON.stringify({ error: 'limit_exceeded', plan: usage.plan, usedToday: usage.usedToday, limit: usage.limit }),
+        { status: 429, headers: { 'Content-Type': 'application/json' } }
+      )
+    }
+
     const { content, addEmojis, authorId } = await request.json()
 
     if (!content || typeof content !== 'string') {

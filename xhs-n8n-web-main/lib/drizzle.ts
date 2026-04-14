@@ -10,6 +10,8 @@ import {
   index,
   primaryKey,
   foreignKey,
+  uuid,
+  date,
 } from 'drizzle-orm/pg-core'
 import { InferSelectModel, InferInsertModel, relations } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/postgres-js'
@@ -73,10 +75,29 @@ export const notesRelations = relations(notesTable, ({ one }) => ({
   }),
 }))
 
+export const userProfilesTable = pgTable(
+  'user_profiles',
+  {
+    id: uuid('id').primaryKey(),
+    email: text('email').notNull().unique(),
+    plan: text('plan').notNull().default('free'),
+    planExpiresAt: timestamp('plan_expires_at', { withTimezone: true }),
+    isAdmin: boolean('is_admin').notNull().default(false),
+    dailyUsageCount: integer('daily_usage_count').notNull().default(0),
+    lastUsageDate: date('last_usage_date'),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => ({
+    emailIdx: index('idx_user_profiles_email').on(t.email),
+  })
+)
+
 export type Author = InferSelectModel<typeof authorsTable>
 export type NewAuthor = InferInsertModel<typeof authorsTable>
 export type Note = InferSelectModel<typeof notesTable>
 export type NewNote = InferInsertModel<typeof notesTable>
+export type UserProfile = InferSelectModel<typeof userProfilesTable>
+export type NewUserProfile = InferInsertModel<typeof userProfilesTable>
 
 // Connect to Postgres
 export const db = drizzle(sql, {
@@ -85,5 +106,6 @@ export const db = drizzle(sql, {
     notes: notesTable,
     authorsRelations,
     notesRelations,
+    userProfiles: userProfilesTable,
   },
 })

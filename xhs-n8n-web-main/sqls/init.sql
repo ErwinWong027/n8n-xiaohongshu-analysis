@@ -37,3 +37,37 @@ create index IF not exists idx_notes_author_id on public.notes using btree (auth
 create index IF not exists idx_notes_is_top10 on public.notes using btree (is_top10) TABLESPACE pg_default;
 
 create index IF not exists idx_notes_created_at on public.notes using btree (created_at) TABLESPACE pg_default;
+
+
+-- User profiles table (linked to Supabase Auth users)
+create table if not exists public.user_profiles (
+  id              uuid not null,
+  email           text not null,
+  plan            text not null default 'free',
+  plan_expires_at timestamp with time zone null,
+  is_admin        boolean not null default false,
+  daily_usage_count integer not null default 0,
+  last_usage_date date null,
+  created_at      timestamp with time zone not null default now(),
+  constraint user_profiles_pkey primary key (id),
+  constraint user_profiles_email_key unique (email),
+  constraint user_profiles_plan_check check (plan in ('free', 'pro', 'max'))
+) TABLESPACE pg_default;
+
+create index IF not exists idx_user_profiles_email on public.user_profiles using btree (email) TABLESPACE pg_default;
+
+-- Trigger: auto-create user_profiles row when a new Supabase Auth user registers
+create or replace function public.handle_new_user()
+returns trigger as $$
+begin
+  insert into public.user_profiles (id, email)
+  values (new.id, new.email)
+  on conflict (id) do nothing;
+  return new;
+end;
+$$ language plpgsql security definer;
+
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute function public.handle_new_user();
