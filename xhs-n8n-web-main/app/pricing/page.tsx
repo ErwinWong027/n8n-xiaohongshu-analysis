@@ -1,5 +1,6 @@
 import { Check, Sparkles, Zap, Infinity } from 'lucide-react'
 import Link from 'next/link'
+import { WechatQrImage } from '@/components/wechat-qr-image'
 
 const plans = [
   {
@@ -185,17 +186,7 @@ function WechatPaymentSection() {
       {/* WeChat QR placeholder — replace public/wechat-qr.png with your actual QR code */}
       <div className="flex justify-center mb-4">
         <div className="w-48 h-48 rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 flex items-center justify-center">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="/wechat-qr.png"
-            alt="微信收款码"
-            className="w-full h-full object-contain"
-            onError={(e) => {
-              const el = e.currentTarget
-              el.style.display = 'none'
-              el.parentElement!.innerHTML = '<p class="text-xs text-gray-400 p-4">请将微信收款码<br/>图片放到<br/>public/wechat-qr.png</p>'
-            }}
-          />
+          <WechatQrImage />
         </div>
       </div>
 
