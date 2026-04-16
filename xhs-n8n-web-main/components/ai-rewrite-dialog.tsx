@@ -6,22 +6,26 @@ import { VisuallyHidden } from '@/components/ui/visually-hidden'
 import { Button } from '@/components/ui/button'
 import { MarkdownRenderer } from '@/components/markdown-renderer'
 import { cn } from '@/lib/utils'
-import { Sparkles, Send, Copy, RefreshCw } from 'lucide-react'
+import { Sparkles, Send, Copy, RefreshCw, ChevronDown } from 'lucide-react'
 import { Author } from '@/lib/drizzle'
 import { useAuth } from '@/components/auth-provider'
 import { AuthModal } from '@/components/auth-modal'
 import { UpgradeDialog } from '@/components/upgrade-dialog'
+import { TEMPLATE_ONE_TEXT } from '@/lib/knowledge-template'
 
 interface AIRewriteDialogProps {
   author?: Author
   children?: React.ReactNode
 }
 
+type ContentMode = 'custom' | 'template1'
+
 export function AIRewriteDialog({ author, children }: AIRewriteDialogProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [showAuthModal, setShowAuthModal] = useState(false)
   const [showUpgradeDialog, setShowUpgradeDialog] = useState(false)
   const [upgradeInfo, setUpgradeInfo] = useState({ usedToday: 0, limitToday: 5 })
+  const [contentMode, setContentMode] = useState<ContentMode>('custom')
   const [content, setContent] = useState('')
   const [addEmojis, setAddEmojis] = useState(true)
   const [isLoading, setIsLoading] = useState(false)
@@ -30,29 +34,40 @@ export function AIRewriteDialog({ author, children }: AIRewriteDialogProps) {
 
   const { user, loading } = useAuth()
 
-  async function handleTriggerClick() {
-    // Not logged in → show auth modal
+  // 直接打开弹窗，不做 auth 检查
+  const handleTriggerClick = () => {
+    setIsOpen(true)
+  }
+
+  // 切换模版模式
+  const handleModeChange = (mode: ContentMode) => {
+    setContentMode(mode)
+    if (mode === 'template1') {
+      setContent(TEMPLATE_ONE_TEXT)
+    } else {
+      setContent('')
+    }
+  }
+
+  const handleRewrite = async () => {
+    if (!content.trim()) return
+
+    // auth 检查：未登录先弹登录框
     if (!user) {
       setShowAuthModal(true)
       return
     }
 
-    // Check usage limit
-    const res = await fetch('/api/usage/check')
-    if (res.ok) {
-      const status = await res.json()
+    // 用量检查
+    const usageRes = await fetch('/api/usage/check')
+    if (usageRes.ok) {
+      const status = await usageRes.json()
       if (!status.canUse) {
         setUpgradeInfo({ usedToday: status.usedToday, limitToday: status.limitToday })
         setShowUpgradeDialog(true)
         return
       }
     }
-
-    setIsOpen(true)
-  }
-
-  const handleRewrite = async () => {
-    if (!content.trim()) return
 
     setIsLoading(true)
     setIsStreaming(true)
@@ -61,9 +76,7 @@ export function AIRewriteDialog({ author, children }: AIRewriteDialogProps) {
     try {
       const response = await fetch('/api/ai-rewrite', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           content: content.trim(),
           addEmojis,
@@ -85,9 +98,7 @@ export function AIRewriteDialog({ author, children }: AIRewriteDialogProps) {
         return
       }
 
-      if (!response.ok) {
-        throw new Error('Failed to generate content')
-      }
+      if (!response.ok) throw new Error('Failed to generate content')
 
       const reader = response.body?.getReader()
       const decoder = new TextDecoder()
@@ -139,7 +150,7 @@ export function AIRewriteDialog({ author, children }: AIRewriteDialogProps) {
 
   const handleReset = () => {
     setGeneratedContent('')
-    setContent('')
+    setContent(contentMode === 'template1' ? TEMPLATE_ONE_TEXT : '')
   }
 
   return (
@@ -202,17 +213,40 @@ export function AIRewriteDialog({ author, children }: AIRewriteDialogProps) {
                 )}
 
                 <div className="space-y-2">
-                  <label className="block text-sm font-medium">
-                    内容主题和创作要求
-                  </label>
+                  {/* 模版选择下拉 */}
+                  <div className="flex items-center justify-between">
+                    <label className="block text-sm font-medium">
+                      内容主题和创作要求
+                    </label>
+                    <div className="relative">
+                      <select
+                        value={contentMode}
+                        onChange={e => handleModeChange(e.target.value as ContentMode)}
+                        className={cn(
+                          'appearance-none text-xs pl-3 pr-7 py-1.5 rounded-md border cursor-pointer',
+                          'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700',
+                          'text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-red-500'
+                        )}
+                      >
+                        <option value="custom">自定义填写</option>
+                        <option value="template1">模版一（求职 Agent）</option>
+                      </select>
+                      <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400 pointer-events-none" />
+                    </div>
+                  </div>
+
                   <textarea
                     value={content}
-                    onChange={(e) => setContent(e.target.value)}
-                    placeholder="请输入您想要创作的主题和具体要求，例如：&#10;&#10;主题：夏日穿搭分享&#10;要求：适合学生党，预算在500元以内，风格清新甜美，包含具体的搭配建议..."
+                    onChange={e => setContent(e.target.value)}
+                    placeholder={
+                      contentMode === 'template1'
+                        ? '已加载模版一内容，可直接点击「开始仿写」或修改后仿写'
+                        : '请输入您想要创作的主题和具体要求，例如：\n\n主题：夏日穿搭分享\n要求：适合学生党，预算在500元以内，风格清新甜美，包含具体的搭配建议...'
+                    }
                     className={cn(
-                      'w-full h-40 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg',
+                      'w-full h-48 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg',
                       'focus:ring-2 focus:ring-red-500 focus:border-transparent',
-                      'dark:bg-gray-700 dark:text-white resize-none'
+                      'dark:bg-gray-700 dark:text-white resize-none text-sm'
                     )}
                   />
                 </div>
@@ -222,7 +256,7 @@ export function AIRewriteDialog({ author, children }: AIRewriteDialogProps) {
                     type="checkbox"
                     id="addEmojis"
                     checked={addEmojis}
-                    onChange={(e) => setAddEmojis(e.target.checked)}
+                    onChange={e => setAddEmojis(e.target.checked)}
                     className="rounded border-gray-300"
                   />
                   <label htmlFor="addEmojis" className="text-sm">
@@ -251,21 +285,11 @@ export function AIRewriteDialog({ author, children }: AIRewriteDialogProps) {
 
                   {generatedContent && (
                     <div className="flex space-x-2">
-                      <Button
-                        onClick={handleCopy}
-                        variant="outline"
-                        size="sm"
-                        className="flex-1"
-                      >
+                      <Button onClick={handleCopy} variant="outline" size="sm" className="flex-1">
                         <Copy className="w-4 h-4 mr-2" />
                         复制
                       </Button>
-                      <Button
-                        onClick={handleReset}
-                        variant="outline"
-                        size="sm"
-                        className="flex-1"
-                      >
+                      <Button onClick={handleReset} variant="outline" size="sm" className="flex-1">
                         <RefreshCw className="w-4 h-4 mr-2" />
                         重置
                       </Button>
@@ -285,10 +309,7 @@ export function AIRewriteDialog({ author, children }: AIRewriteDialogProps) {
                 <div className="absolute inset-4 overflow-y-auto dialog-scroll">
                   {generatedContent ? (
                     <div>
-                      <MarkdownRenderer
-                        content={generatedContent}
-                        className="text-sm"
-                      />
+                      <MarkdownRenderer content={generatedContent} className="text-sm" />
                       {isStreaming && (
                         <span className="inline-block w-2 h-5 bg-red-600 ml-1 animate-pulse" />
                       )}
