@@ -91,6 +91,7 @@ export function AIRewriteDialog({ author, children }: AIRewriteDialogProps) {
 
       const reader = response.body?.getReader()
       const decoder = new TextDecoder()
+      let fullContent = ''
 
       if (reader) {
         while (true) {
@@ -105,11 +106,14 @@ export function AIRewriteDialog({ author, children }: AIRewriteDialogProps) {
               const data = line.slice(6)
               if (data === '[DONE]') {
                 setIsStreaming(false)
+                // 通知 Chrome 扩展内容生成完成
+                window.postMessage({ type: 'XHS_REWRITE_DONE', content: fullContent }, '*')
                 break
               }
               try {
                 const parsed = JSON.parse(data)
                 if (parsed.content) {
+                  fullContent += parsed.content
                   setGeneratedContent(prev => prev + parsed.content)
                 }
               } catch (e) {
